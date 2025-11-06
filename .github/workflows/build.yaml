@@ -1,0 +1,48 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-musl
+          profile: minimal
+
+      - name: Build Release Binary
+        run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Strip Binary
+        run: strip target/x86_64-unknown-linux-musl/release/pwgen-rs
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            Automatic release for version ${{ steps.get_version.outputs.VERSION }}
+
+            **Binary**: `pwgen-rs-x86_64-unknown-linux-musl`
+            **Platform**: Linux (musl) x86_64
+            **Static**: Yes
+          files: |
+            target/x86_64-unknown-linux-musl/release/pwgen-rs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
