@@ -1,6 +1,7 @@
 # pwgen-rs
 
-A Rust implementation of the classic `pwgen` password generator with no external dependencies. Generates cryptographically secure and memorable passwords using `/dev/urandom` as the entropy source.
+A Rust implementation of the classic `pwgen` password generator with no external dependencies.
+Generates cryptographically secure and memorable passwords using `/dev/urandom` as the entropy source.
 
 ## Features
 
@@ -10,14 +11,29 @@ A Rust implementation of the classic `pwgen` password generator with no external
 - 📦 **Statically linked** - Single binary for easy distribution
 - 🎯 **Full compatibility** - Supports all original pwgen options
 
-## Quick Start
+## Installation
 
-Download the latest binary from [Releases](https://github.com/your-username/pwgen-rs/releases):
+### Download Binary
+Get the latest binary from [Releases](https://github.com/Karag0/pwgen-rs/releases):
 
 ```bash
 chmod +x pwgen-rs
 ./pwgen-rs --help
 ```
+
+### Install via Cargo
+```bash
+cargo install pwgen-rs
+```
+
+### Build from Source
+```bash
+git clone https://github.com/Karag0/pwgen-rs
+cd pwgen-rs
+cargo build --release
+```
+
+The binary will be available at `target/release/pwgen-rs`.
 
 ## Usage Examples
 
@@ -48,26 +64,11 @@ chmod +x pwgen-rs
 - `-B, --ambiguous` - Don't include ambiguous characters (like 0/O, 1/l)
 - `-1` - Print passwords in a single column
 
-## Building from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/Karag0/pwgen-rs
-cd pwgen-rs
-
-# Build with Rust
-cargo build --release
-
-# Run tests
-cargo test
-```
-
-The binary will be available at `target/release/pwgen-rs`.
-
 ## License
 
-GPL3 License - see [LICENSE](LICENSE) file for details.
+GPL-3.0 License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Note**: This is a Rust rewrite of the original `pwgen` utility, maintaining full compatibility while providing a modern, secure implementation.
+**Note**: This is a Rust rewrite of the original `pwgen` utility, maintaining full compatibility
+while providing a modern, secure implementation.
