@@ -34,15 +34,19 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: build-${{ steps.sha.outputs.sha }}
-        release_name: Latest Build (${{ steps.sha.outputs.sha }})
+        name: Latest Build (${{ steps.sha.outputs.sha }})
         body: |
           Automatic build from main branch
           
           **Commit**: ${{ github.sha }}
           **Build Date**: $(date -u)
           **Platform**: Linux x86_64 (musl) - statically linked
+          
+          ## Usage
+          ```bash
+          chmod +x pwgen-rs
+          ./pwgen-rs --help
+          ```
         draft: false
         prerelease: true
         files: target/x86_64-unknown-linux-musl/release/pwgen-rs
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
