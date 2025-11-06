@@ -50,7 +50,7 @@ The binary will be available at `target/release/pwgen-rs`.
 # Generate passwords with symbols
 ./pwgen-rs -y 12 3
 
-# Generate passwords without vowels (avoid offensive words)
+# Generate passwords without vowels 
 ./pwgen-rs -v 8 5
 ```
 
