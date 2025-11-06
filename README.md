@@ -1,4 +1,4 @@
-# pwgen-rs
+# pwgen-rs [![crates.io](https://img.shields.io/crates/v/pwgen-rs.svg)](https://crates.io/crates/pwgen-rs)
 
 A Rust implementation of the classic `pwgen` password generator with no external dependencies.
 Generates cryptographically secure and memorable passwords using `/dev/urandom` as the entropy source.
