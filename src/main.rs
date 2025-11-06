@@ -19,7 +19,7 @@ const CONSONANTS: &[u8] = b"bcdfghjklmnpqrstvwxzBCDFGHJKLMNPQRSTVWXZ";
 const CONSONANTS_LOWER: &[u8] = b"bcdfghjklmnpqrstvwxz";
 const VOWELS_LOWER: &[u8] = b"aeiouy";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Config {
     pw_length: usize,
     num_pw: usize,
@@ -41,9 +41,9 @@ impl Default for Config {
         Self {
             pw_length: DEFAULT_LENGTH,
             num_pw: DEFAULT_COUNT,
-            capitalize: false,
+            capitalize: true,
             no_capitalize: false,
-            numerals: false,
+            numerals: true,
             no_numerals: false,
             symbols: false,
             remove_chars: None,
@@ -72,6 +72,10 @@ fn main() -> io::Result<()> {
 
 fn parse_args() -> Config {
     let args: Vec<String> = env::args().collect();
+    parse_args_from_vec(args)
+}
+
+fn parse_args_from_vec(args: Vec<String>) -> Config {
     let mut config = Config::default();
     let mut positional_args = Vec::new();
     let mut i = 1;
@@ -114,17 +118,9 @@ fn parse_args() -> Config {
         i += 1;
     }
 
-    // Установим значения по умолчанию как в оригинальном pwgen
-    if !config.capitalize && !config.no_capitalize {
-        config.capitalize = true;
-    }
-    if !config.numerals && !config.no_numerals {
-        config.numerals = true;
-    }
-
     // Обработка позиционных аргументов
     match positional_args.len() {
-        0 => {}
+        0 => {},
         1 => {
             if let Ok(n) = positional_args[0].parse() {
                 config.pw_length = n;
@@ -163,7 +159,7 @@ fn generate_passwords(config: &Config) -> io::Result<Vec<String>> {
     Ok(passwords)
 }
 
-fn generate_secure_password(length: usize, config: &Config, rng: &mut File) -> io::Result<String> {
+fn generate_secure_password<R: Read>(length: usize, config: &Config, rng: &mut R) -> io::Result<String> {
     let charset = build_charset(config);
     if charset.is_empty() {
         return Ok("a".repeat(length)); // fallback
@@ -181,11 +177,12 @@ fn generate_secure_password(length: usize, config: &Config, rng: &mut File) -> i
     Ok(password)
 }
 
-fn generate_memorable_password(
-    length: usize,
-    config: &Config,
-    rng: &mut File,
-) -> io::Result<String> {
+fn generate_memorable_password<R: Read>(length: usize, config: &Config, rng: &mut R) -> io::Result<String> {
+    // Если установлен флаг no_vowels, используем безопасную генерацию без шаблона
+    if config.no_vowels {
+        return generate_secure_password(length, config, rng);
+    }
+
     let mut password = String::with_capacity(length);
 
     // Выбираем наборы символов в зависимости от опции --no-capitalize
@@ -206,6 +203,7 @@ fn generate_memorable_password(
         };
 
         let mut buf = [0u8; 1];
+        let mut attempts = 0;
         loop {
             rng.read_exact(&mut buf)?;
             let idx = buf[0] as usize % char_set.len();
@@ -214,17 +212,23 @@ fn generate_memorable_password(
             // Проверка на удаляемые символы
             if let Some(remove_chars) = &config.remove_chars {
                 if remove_chars.contains(&candidate) {
+                    attempts += 1;
+                    if attempts > 100 {
+                        // Fallback: используем любой символ после множества попыток
+                        password.push(candidate as char);
+                        break;
+                    }
                     continue;
                 }
             }
 
             // Проверка на неоднозначные символы
             if config.ambiguous && AMBIGUOUS.contains(&candidate) {
-                continue;
-            }
-
-            // Проверка на гласные (если опция --no-vowels, пропускаем гласные)
-            if config.no_vowels && VOWELS.contains(&candidate) {
+                attempts += 1;
+                if attempts > 100 {
+                    password.push(candidate as char);
+                    break;
+                }
                 continue;
             }
 
@@ -239,15 +243,13 @@ fn generate_memorable_password(
     Ok(password)
 }
 
-fn apply_requirements(password: Vec<u8>, config: &Config, rng: &mut File) -> io::Result<String> {
+fn apply_requirements<R: Read>(password: Vec<u8>, config: &Config, rng: &mut R) -> io::Result<String> {
     let mut result = password;
     let mut buf = [0u8; 1];
 
     // Проверка и добавление заглавной буквы если требуется и разрешено
-    if config.capitalize && !config.no_capitalize && !result.iter().any(|&c| c.is_ascii_uppercase())
-    {
-        let uppercase_filtered: Vec<u8> = UPPERCASE
-            .iter()
+    if config.capitalize && !config.no_capitalize && !result.iter().any(|&c| c.is_ascii_uppercase()) {
+        let uppercase_filtered: Vec<u8> = UPPERCASE.iter()
             .filter(|&&c| {
                 if config.ambiguous && AMBIGUOUS.contains(&c) {
                     return false;
@@ -277,8 +279,7 @@ fn apply_requirements(password: Vec<u8>, config: &Config, rng: &mut File) -> io:
     if config.numerals && !config.no_numerals {
         let has_numeral = result.iter().any(|&c| c.is_ascii_digit());
         if !has_numeral {
-            let numerals_filtered: Vec<u8> = NUMERALS
-                .iter()
+            let numerals_filtered: Vec<u8> = NUMERALS.iter()
                 .filter(|&&c| {
                     if config.ambiguous && AMBIGUOUS.contains(&c) {
                         return false;
@@ -309,8 +310,7 @@ fn apply_requirements(password: Vec<u8>, config: &Config, rng: &mut File) -> io:
     if config.symbols {
         let has_symbol = result.iter().any(|&c| SYMBOLS.contains(&c));
         if !has_symbol {
-            let symbols_filtered: Vec<u8> = SYMBOLS
-                .iter()
+            let symbols_filtered: Vec<u8> = SYMBOLS.iter()
                 .filter(|&&c| {
                     if let Some(remove_chars) = &config.remove_chars {
                         if remove_chars.contains(&c) {
@@ -440,4 +440,314 @@ fn print_help() {
     println!("    Don't print the generated passwords in columns");
     println!("  -v or --no-vowels");
     println!("    Do not use any vowels so as to avoid accidental nasty words");
+}
+
+// Тесты
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    // Вспомогательная функция для создания конфигурации для тестов
+    fn test_config() -> Config {
+        Config {
+            pw_length: 8,
+            num_pw: 1,
+            capitalize: true,
+            no_capitalize: false,
+            numerals: true,
+            no_numerals: false,
+            symbols: false,
+            remove_chars: None,
+            secure: false,
+            ambiguous: false,
+            columns: false,
+            no_vowels: false,
+            help: false,
+        }
+    }
+
+    #[test]
+    fn test_build_charset_default() {
+        let config = Config::default();
+        let charset = build_charset(&config);
+
+        // Должен содержать строчные, заглавные и цифры по умолчанию
+        assert!(charset.contains(&b'a'));
+        assert!(charset.contains(&b'A'));
+        assert!(charset.contains(&b'1'));
+        assert!(!charset.contains(&b'!')); // Символы по умолчанию отключены
+    }
+
+    #[test]
+    fn test_build_charset_no_capitalize() {
+        let mut config = test_config();
+        config.no_capitalize = true;
+        let charset = build_charset(&config);
+
+        // Не должен содержать заглавные буквы
+        assert!(charset.contains(&b'a'));
+        assert!(!charset.contains(&b'A'));
+    }
+
+    #[test]
+    fn test_build_charset_no_numerals() {
+        let mut config = test_config();
+        config.no_numerals = true;
+        let charset = build_charset(&config);
+
+        // Не должен содержать цифры
+        assert!(!charset.iter().any(|&c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn test_build_charset_symbols() {
+        let mut config = test_config();
+        config.symbols = true;
+        let charset = build_charset(&config);
+
+        // Должен содержать символы
+        assert!(charset.contains(&b'!'));
+        assert!(charset.contains(&b'@'));
+    }
+
+    #[test]
+    fn test_build_charset_ambiguous() {
+        let mut config = test_config();
+        config.ambiguous = true;
+        let charset = build_charset(&config);
+
+        // Не должен содержать неоднозначные символы
+        assert!(!charset.contains(&b'0'));
+        assert!(!charset.contains(&b'O'));
+        assert!(!charset.contains(&b'1'));
+        assert!(!charset.contains(&b'l'));
+    }
+
+    #[test]
+    fn test_build_charset_no_vowels() {
+        let mut config = test_config();
+        config.no_vowels = true;
+        let charset = build_charset(&config);
+
+        // Не должен содержать гласные
+        assert!(!charset.contains(&b'a'));
+        assert!(!charset.contains(&b'e'));
+        assert!(!charset.contains(&b'i'));
+        assert!(!charset.contains(&b'o'));
+        assert!(!charset.contains(&b'u'));
+        assert!(!charset.contains(&b'A'));
+        assert!(!charset.contains(&b'E'));
+        assert!(!charset.contains(&b'I'));
+        assert!(!charset.contains(&b'O'));
+        assert!(!charset.contains(&b'U'));
+    }
+
+    #[test]
+    fn test_build_charset_remove_chars() {
+        let mut config = test_config();
+        config.remove_chars = Some(b"aeiouAEIOU".to_vec());
+        let charset = build_charset(&config);
+
+        // Не должен содержать удаленные символы
+        assert!(!charset.contains(&b'a'));
+        assert!(!charset.contains(&b'A'));
+    }
+
+    #[test]
+    fn test_generate_secure_password() -> io::Result<()> {
+        let config = test_config();
+        // Mock RNG, который возвращает предсказуемую последовательность
+        let mut mock_rng = Cursor::new(vec![0, 1, 2, 3, 4, 5, 6, 7]);
+
+        let password = generate_secure_password(8, &config, &mut mock_rng)?;
+
+        assert_eq!(password.len(), 8);
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_memorable_password_pattern() -> io::Result<()> {
+        let config = test_config();
+        // Mock RNG, который возвращает индексы для согласных и гласных
+        // Увеличиваем количество данных, чтобы хватило на все чтения
+        let mut mock_rng = Cursor::new(vec![
+            0, 0, 0, 0, 0, 0, 0, 0, // 8 байт для базовой генерации
+            0, 0, 0, 0, // дополнительные байты для apply_requirements
+        ]);
+
+        let password = generate_memorable_password(8, &config, &mut mock_rng)?;
+
+        assert_eq!(password.len(), 8);
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_memorable_password_no_capitalize() -> io::Result<()> {
+        let mut config = test_config();
+        config.no_capitalize = true;
+        // Mock RNG, который возвращает индексы
+        let mut mock_rng = Cursor::new(vec![0, 0, 1, 1, 2, 2, 3, 3, 0, 0]);
+
+        let password = generate_memorable_password(8, &config, &mut mock_rng)?;
+
+        // Не должно быть заглавных букв
+        assert!(!password.chars().any(|c| c.is_uppercase()));
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_password_no_vowels() -> io::Result<()> {
+        let mut config = test_config();
+        config.no_vowels = true;
+        let mut mock_rng = Cursor::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+
+        let password = generate_memorable_password(10, &config, &mut mock_rng)?;
+
+        // Пароль должен быть сгенерирован
+        assert_eq!(password.len(), 10);
+        // Не должен содержать гласные
+        let vowels = "aeiouyAEIOUY";
+        assert!(!password.chars().any(|c| vowels.contains(c)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_apply_requirements_adds_capital() -> io::Result<()> {
+        let mut config = test_config();
+        config.no_numerals = true; // Отключаем цифры, чтобы они не мешали тесту
+        let mut mock_rng = Cursor::new(vec![0, 0]); // Только 2 байта нужно для заглавной буквы
+
+        // Пароль без заглавных букв
+        let password = b"abcdefgh".to_vec();
+        let result = apply_requirements(password, &config, &mut mock_rng)?;
+
+        // Должна быть хотя бы одна заглавная буква
+        assert!(result.chars().any(|c| c.is_uppercase()));
+        Ok(())
+    }
+
+    #[test]
+    fn test_apply_requirements_adds_numeral() -> io::Result<()> {
+        let config = test_config();
+        // Увеличиваем количество данных
+        let mut mock_rng = Cursor::new(vec![0, 0, 0, 0, 0, 0]);
+
+        // Пароль без цифр
+        let password = b"abcdefgh".to_vec();
+        let result = apply_requirements(password, &config, &mut mock_rng)?;
+
+        // Должна быть хотя бы одна цифра
+        assert!(result.chars().any(|c| c.is_ascii_digit()));
+        Ok(())
+    }
+
+    #[test]
+    fn test_apply_requirements_adds_symbol() -> io::Result<()> {
+        let mut config = test_config();
+        config.symbols = true;
+        // Увеличиваем количество данных
+        let mut mock_rng = Cursor::new(vec![0, 0, 0, 0, 0, 0]);
+
+        // Пароль без символов
+        let password = b"abcdefgh".to_vec();
+        let result = apply_requirements(password, &config, &mut mock_rng)?;
+
+        // Должен быть хотя бы один символ
+        assert!(result.chars().any(|c| SYMBOLS.contains(&(c as u8))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_args_default() {
+        let args = vec!["pwgen".to_string()];
+        let config = parse_args_from_vec(args);
+
+        assert_eq!(config.pw_length, DEFAULT_LENGTH);
+        assert_eq!(config.num_pw, DEFAULT_COUNT);
+        assert!(config.capitalize);
+        assert!(config.numerals);
+    }
+
+    #[test]
+    fn test_parse_args_with_length() {
+        let args = vec!["pwgen".to_string(), "12".to_string()];
+        let config = parse_args_from_vec(args);
+
+        assert_eq!(config.pw_length, 12);
+        assert_eq!(config.num_pw, DEFAULT_COUNT);
+    }
+
+    #[test]
+    fn test_parse_args_with_length_and_count() {
+        let args = vec!["pwgen".to_string(), "12".to_string(), "5".to_string()];
+        let config = parse_args_from_vec(args);
+
+        assert_eq!(config.pw_length, 12);
+        assert_eq!(config.num_pw, 5);
+    }
+
+    #[test]
+    fn test_parse_args_options() {
+        let args = vec![
+            "pwgen".to_string(),
+            "-A".to_string(), // no-capitalize
+            "-0".to_string(), // no-numerals
+            "-y".to_string(), // symbols
+            "-s".to_string(), // secure
+            "-B".to_string(), // ambiguous
+            "-v".to_string(), // no-vowels
+            "-1".to_string(), // no columns
+        ];
+        let config = parse_args_from_vec(args);
+
+        assert!(config.no_capitalize);
+        assert!(config.no_numerals);
+        assert!(config.symbols);
+        assert!(config.secure);
+        assert!(config.ambiguous);
+        assert!(config.no_vowels);
+        assert!(!config.columns);
+    }
+
+    #[test]
+    fn test_parse_args_remove_chars() {
+        let args = vec![
+            "pwgen".to_string(),
+            "-r".to_string(),
+            "abc".to_string(),
+        ];
+        let config = parse_args_from_vec(args);
+
+        assert_eq!(config.remove_chars, Some(b"abc".to_vec()));
+    }
+
+    #[test]
+    fn test_print_passwords_columns() {
+        let passwords = vec![
+            "abc".to_string(),
+            "defg".to_string(),
+            "hi".to_string(),
+            "jklmn".to_string(),
+            "op".to_string(),
+        ];
+
+        // Этот тест просто проверяет, что функция не падает
+        print_passwords(&passwords, true);
+        print_passwords(&passwords, false);
+    }
+
+    #[test]
+    fn test_charset_constants() {
+        // Проверяем, что константы не пустые
+        assert!(!LOWERCASE.is_empty());
+        assert!(!UPPERCASE.is_empty());
+        assert!(!NUMERALS.is_empty());
+        assert!(!SYMBOLS.is_empty());
+        assert!(!VOWELS.is_empty());
+        assert!(!AMBIGUOUS.is_empty());
+        assert!(!CONSONANTS.is_empty());
+        assert!(!CONSONANTS_LOWER.is_empty());
+        assert!(!VOWELS_LOWER.is_empty());
+    }
 }
