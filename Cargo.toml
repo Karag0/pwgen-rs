@@ -2,5 +2,16 @@
 name = "pwgen-rs"
 version = "0.1.0"
 edition = "2024"
+description = "A Rust implementation of pwgen password generator"
+authors = ["Karag0 27vlad04@email.com"]
+license = "GPL-3.0"
+repository = "https://github.com/Karag0/pwgen-rs"
+readme = "README.md"
+keywords = ["password", "generator", "pwgen", "cli"]
+categories = ["command-line-utilities"]
 
 [dependencies]
+
+[[bin]]
+name = "pwgen-rs"
+path = "src/main.rs"
