@@ -26,20 +26,22 @@ jobs:
     - name: Strip Binary
       run: strip target/x86_64-unknown-linux-musl/release/pwgen-rs
 
-    - name: Get short SHA
-      id: sha
-      run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+    - name: Get short SHA and date
+      id: vars
+      run: |
+        echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        echo "date=$(date -u)" >> $GITHUB_OUTPUT
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: build-${{ steps.sha.outputs.sha }}
-        name: Latest Build (${{ steps.sha.outputs.sha }})
+        tag_name: build-${{ steps.vars.outputs.sha }}
+        name: Latest Build (${{ steps.vars.outputs.sha }})
         body: |
           Automatic build from main branch
           
           **Commit**: ${{ github.sha }}
-          **Build Date**: $(date -u)
+          **Build Date**: ${{ steps.vars.outputs.date }}
           **Platform**: Linux x86_64 (musl) - statically linked
           
           ## Usage
